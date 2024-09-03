@@ -13,11 +13,10 @@ use Bitrix\Main\Entity;
 
 AddEventHandler('sale', 'OnSaleBasketItemRefreshData', ['\BasketEventCustomRefresh', 'BeforeBasketAddHandler']);
 
-class CCatalogProductCustomPrice extends CCatalogProductProvider
+class ProductCustomPrice extends CCatalogProductProvider
 {
     public static function GetProductData($arParams)
     {
-
         $arResult = parent::GetProductData($arParams);
         $salePrice = GetSalePriceHL($arParams["PRODUCT_ID"]);
         if (!empty($arItemPrice)) {
@@ -25,33 +24,31 @@ class CCatalogProductCustomPrice extends CCatalogProductProvider
                 'BASE_PRICE' => $salePrice,
             ] + $arResult;
         }
-
         return $arResult;
     }
 }
 
-class BasketEventCustomRefresh 
+class BasketEventCustomRefresh
 {
     public static function BeforeBasketAddHandler($BasketItem)
     {
-    
-        $BasketItem->setField("PRODUCT_PROVIDER_CLASS", "CCatalogProductCustomPrice");
+        $BasketItem->setField("PRODUCT_PROVIDER_CLASS", "ProductCustomPrice");
     }
 }
 
 function GetSalePriceHL($productID)
 {
-    $entity_data_class = HL\HighloadBlockTable::compileEntity('PriceBasket')->getDataClass();
-   
-    $arItemPrice = $entity_data_class::getList([ 
+    $arItemPriceHL = HL\HighloadBlockTable::compileEntity('PriceBasket')->getDataClass();
+
+    $arItemPrice = $arItemPriceHL::getList([
         "select" => ["UF_PRICE_PRODUCT"],
         "order" => ["ID" => "DESC"],
-        'limit' => '1', 
+        'limit' => '1',
         "filter" => [
             "UF_ID_PRODUCT" => $productID,
-            "!=UF_PRICE_PRODUCT" =>0,
+            "!=UF_PRICE_PRODUCT" => 0,
         ],
     ])->Fetch();
 
-return $arItemPrice;
+    return $arItemPrice;
 }
