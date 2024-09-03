@@ -1,54 +1,62 @@
 <?php
-
 use \Bitrix\Main\Loader,
 \Bitrix\Main\Localization\Loc;
 
-Loader::includeModule('catalog');
-Loader::includeModule('sale');
+\CModule::IncludeModule('catalog');
+\CModule::IncludeModule('sale');
 
 \Bitrix\Main\Loader::includeModule('highloadblock');
 use Bitrix\Highloadblock as HL;
+use Bitrix\Main;
 use Bitrix\Main\Entity;
+use Bitrix\Main\Event;
+use Bitrix\Main\EventManager;
+use Bitrix\Sale\BasketItem;
 
+EventManager::getInstance()->addEventHandler(
+    'sale',
+    'OnSaleBasketBeforeSaved',
+    ['\PriceOverrideHandler', 'ApplyCustomPrice']
+);
 
-AddEventHandler('sale', 'OnSaleBasketItemRefreshData', ['\BasketEventCustomRefresh', 'BeforeBasketAddHandler']);
-
-class ProductCustomPrice extends CCatalogProductProvider
+class PriceOverrideHandler
 {
-    public static function GetProductData($arParams)
+    public static function ApplyCustomPrice(\Bitrix\Main\Event $event)
     {
-        $arResult = parent::GetProductData($arParams);
-        $salePrice = GetSalePriceHL($arParams["PRODUCT_ID"]);
-        if (!empty($arItemPrice)) {
-            $arResult = [
-                'BASE_PRICE' => $salePrice,
-            ] + $arResult;
+
+        $basket = $event->getParameter("ENTITY");
+
+        $discountPrice = new CustomPriceLoaderHL;
+        foreach ($discountPrice->LoadCustomPriceData() as $discountItem) {
+            foreach ($basket as $basketItem) {
+                if ($basketItem->getProductId() == $discountItem["UF_ID_PRODUCT"]) {
+                    $basketItem->setField('BASE_PRICE', $discountItem["UF_PRICE_PRODUCT"]);
+                }
+            }
         }
-        return $arResult;
     }
 }
 
-class BasketEventCustomRefresh
+class CustomPriceLoaderHL
 {
-    public static function BeforeBasketAddHandler($BasketItem)
+    public static function LoadCustomPriceData()
     {
-        $BasketItem->setField("PRODUCT_PROVIDER_CLASS", "ProductCustomPrice");
+        $priceData = HL\HighloadBlockTable::compileEntity('PriceBasket')->getDataClass();
+
+        $customPriceDataQuery = $priceData::getList([
+            "select" => ["UF_ID_PRODUCT", "UF_PRICE_PRODUCT"],
+            "order" => ["ID" => "DESC"],
+            "filter" => [
+                "!=UF_PRICE_PRODUCT" => 0,
+            ],
+        ]);
+
+        $arCustomPrice = [];
+
+        while ($PriceOne = $customPriceDataQuery->fetch()) {
+            $arCustomPrice[] = $PriceOne;
+        }
+
+        return $arCustomPrice;
     }
-}
-
-function GetSalePriceHL($productID)
-{
-    $arItemPriceHL = HL\HighloadBlockTable::compileEntity('PriceBasket')->getDataClass();
-
-    $arItemPrice = $arItemPriceHL::getList([
-        "select" => ["UF_PRICE_PRODUCT"],
-        "order" => ["ID" => "DESC"],
-        'limit' => '1',
-        "filter" => [
-            "UF_ID_PRODUCT" => $productID,
-            "!=UF_PRICE_PRODUCT" => 0,
-        ],
-    ])->Fetch();
-
-    return $arItemPrice;
 }
